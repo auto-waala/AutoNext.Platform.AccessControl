@@ -1,0 +1,83 @@
+name: Deploy API to Dev and Production
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+
+jobs:
+  deploy-dev:
+    if: github.event.pull_request.merged == true
+    runs-on: windows-latest
+    environment: Development
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Publish (Development)
+        run: |
+          dotnet publish AutoNext.Platform.AccessControl.API/AutoNext.Platform.AccessControl.API.csproj \
+          -c Release \
+          -o ./publish/dev
+
+      - name: Set Environment Variable
+        run: echo "ASPNETCORE_ENVIRONMENT=Development" >> $env:GITHUB_ENV
+
+      - name: Deploy to Dev via FTP
+        uses: SamKirkland/FTP-Deploy-Action@4.3.0
+        with:
+          server: ${{ secrets.FTP_DEV_SERVER }}
+          username: ${{ secrets.FTP_DEV_USERNAME }}
+          password: ${{ secrets.FTP_DEV_PASSWORD }}
+          local-dir: ./publish/dev/
+          server-dir: ${{ secrets.FTP_DEV_PATH }}/
+          state-name: .ftp-deploy-sync-state-dev.json
+          log: verbose
+
+
+  deploy-production:
+    if: github.event.pull_request.merged == true
+    runs-on: windows-latest
+    environment: Production
+    needs: deploy-dev
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Publish (Production)
+        run: |
+          dotnet publish AutoNext.Platform.AccessControl.API/AutoNext.Platform.AccessControl.API.csproj \
+          -c Release \
+          -o ./publish/prod
+
+      - name: Set Environment Variable
+        run: echo "ASPNETCORE_ENVIRONMENT=Production" >> $env:GITHUB_ENV
+
+      - name: Deploy to Production via FTP
+        uses: SamKirkland/FTP-Deploy-Action@4.3.0
+        with:
+          server: ${{ secrets.FTP_PROD_SERVER }}
+          username: ${{ secrets.FTP_PROD_USERNAME }}
+          password: ${{ secrets.FTP_PROD_PASSWORD }}
+          local-dir: ./publish/prod/
+          server-dir: ${{ secrets.FTP_PROD_PATH }}/
+          state-name: .ftp-deploy-sync-state-prod.json
+          log: verbose
