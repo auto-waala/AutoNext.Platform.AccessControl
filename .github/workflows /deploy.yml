@@ -1,83 +1,80 @@
-name: Deploy API to Dev and Production
+name: Deploy AccessControl API to Dev and Production
 
 on:
   pull_request:
     types: [closed]
-    branches: [master]
+    branches: [ master ]
 
 jobs:
   deploy-dev:
     if: github.event.pull_request.merged == true
     runs-on: windows-latest
     environment: Development
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '8.0.x'
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.x'
 
-      - name: Restore
-        run: dotnet restore
+    - name: Restore dependencies
+      run: dotnet restore
 
-      - name: Publish (Development)
-        run: |
-          dotnet publish AutoNext.Platform.AccessControl.API/AutoNext.Platform.AccessControl.API.csproj \
-          -c Release \
-          -o ./publish/dev
+    - name: Publish AccessControl API for Development
+      run: |
+        dotnet publish AutoNext.Platform.AccessControl.API/AutoNext.Platform.AccessControl.API.csproj --configuration Release --output ./publish/dev -p:EnvironmentName=Development
 
-      - name: Set Environment Variable
-        run: echo "ASPNETCORE_ENVIRONMENT=Development" >> $env:GITHUB_ENV
-
-      - name: Deploy to Dev via FTP
-        uses: SamKirkland/FTP-Deploy-Action@4.3.0
-        with:
-          server: ${{ secrets.FTP_DEV_SERVER }}
-          username: ${{ secrets.FTP_DEV_USERNAME }}
-          password: ${{ secrets.FTP_DEV_PASSWORD }}
-          local-dir: ./publish/dev/
-          server-dir: ${{ secrets.FTP_DEV_PATH }}/
-          state-name: .ftp-deploy-sync-state-dev.json
-          log: verbose
-
+    - name: Deploy to Dev Environment via FTP (Preserve Logs)
+      uses: SamKirkland/FTP-Deploy-Action@4.3.0
+      with:
+        server: ${{ secrets.FTP_SERVER_ACCESSCONTROL }}
+        username: ${{ secrets.FTP_USERNAME_ACCESSCONTROL }}
+        password: ${{ secrets.FTP_PASSWORD_ACCESSCONTROL }}
+        local-dir: ./publish/dev/
+        server-dir: ${{ secrets.FTP_DEV_PATH_ACCESSCONTROL }}/
+        port: 21
+        timeout: 120000
+        retry: 5
+        retry-delay: 5000
+        log: verbose
+        state-name: .ftp-deploy-sync-state-dev-accesscontrol.json
 
   deploy-production:
     if: github.event.pull_request.merged == true
     runs-on: windows-latest
     environment: Production
     needs: deploy-dev
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '8.0.x'
+    - name: Setup .NET Core
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.x'
 
-      - name: Restore
-        run: dotnet restore
+    - name: Restore dependencies
+      run: dotnet restore
 
-      - name: Publish (Production)
-        run: |
-          dotnet publish AutoNext.Platform.AccessControl.API/AutoNext.Platform.AccessControl.API.csproj \
-          -c Release \
-          -o ./publish/prod
+    - name: Publish AccessControl API for Production
+      run: |
+        dotnet publish AutoNext.Platform.AccessControl.API/AutoNext.Platform.AccessControl.API.csproj --configuration Release --output ./publish/prod -p:EnvironmentName=Production
 
-      - name: Set Environment Variable
-        run: echo "ASPNETCORE_ENVIRONMENT=Production" >> $env:GITHUB_ENV
-
-      - name: Deploy to Production via FTP
-        uses: SamKirkland/FTP-Deploy-Action@4.3.0
-        with:
-          server: ${{ secrets.FTP_PROD_SERVER }}
-          username: ${{ secrets.FTP_PROD_USERNAME }}
-          password: ${{ secrets.FTP_PROD_PASSWORD }}
-          local-dir: ./publish/prod/
-          server-dir: ${{ secrets.FTP_PROD_PATH }}/
-          state-name: .ftp-deploy-sync-state-prod.json
-          log: verbose
+    - name: Deploy to Production Environment via FTP (Preserve Logs)
+      uses: SamKirkland/FTP-Deploy-Action@4.3.0
+      with:
+        server: ${{ secrets.FTP_SERVER_ACCESSCONTROL }}
+        username: ${{ secrets.FTP_USERNAME_ACCESSCONTROL }}
+        password: ${{ secrets.FTP_PASSWORD_ACCESSCONTROL }}
+        local-dir: ./publish/prod/
+        server-dir: ${{ secrets.FTP_PROD_PATH_ACCESSCONTROL }}/
+        port: 21
+        timeout: 120000
+        retry: 5
+        retry-delay: 5000
+        log: verbose
+        state-name: .ftp-deploy-sync-state-prod-accesscontrol.json
