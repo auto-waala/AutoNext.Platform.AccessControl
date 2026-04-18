@@ -11,7 +11,6 @@ namespace AutoNext.Platform.AccessControl.API.Controllers.v1
     [ApiController]
     [ApiVersion("1.0")]
     [Route("api/v{version:apiVersion}/[controller]")]
-    [Authorize]
     public class OrganizationsController : ControllerBase
     {
         private readonly IOrganizationService _organizationService;
