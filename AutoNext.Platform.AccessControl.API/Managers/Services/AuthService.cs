@@ -36,28 +36,34 @@ namespace AutoNext.Platform.AccessControl.API.Managers.Services
 
             try
             {
-                // Check if user exists
+                // Check Existing User
                 var existingUser = await _unitOfWork.Users.GetByEmailAsync(request.Email);
                 if (existingUser != null)
                     throw new InvalidOperationException("User with this email already exists");
 
-                // Create user
+                // Create User
                 var user = new User
                 {
-                    Email = request.Email,
+                    Email = request.Email.Trim().ToLower(),
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
                     FirstName = request.FirstName,
                     LastName = request.LastName,
                     PhoneNumber = request.PhoneNumber,
                     UserType = request.UserType ?? "Customer",
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true,
+                    EmailVerified = false,
+                    PhoneVerified = false
                 };
 
                 await _unitOfWork.Users.AddAsync(user);
                 await _unitOfWork.SaveChangesAsync();
 
-                // Assign default role based on user type
-                var defaultRole = await _unitOfWork.Roles.GetByCodeAsync(user.UserType?.ToLower() ?? "buyer");
+                // Assign Default Role
+                var roleCode = user.UserType.ToLower();
+
+                var defaultRole = await _unitOfWork.Roles.GetByCodeAsync(roleCode);
+
                 if (defaultRole != null)
                 {
                     var userRole = new UserRole
@@ -66,40 +72,47 @@ namespace AutoNext.Platform.AccessControl.API.Managers.Services
                         RoleId = defaultRole.Id,
                         AssignedAt = DateTime.UtcNow
                     };
-                    _unitOfWork.UserRoles.AddUserRoleAsync(userRole);
 
+                    await _unitOfWork.UserRoles.AddUserRoleAsync(userRole);
                     await _unitOfWork.SaveChangesAsync();
                 }
 
-                // Create personal organization for individual user
-                if (user.UserType == "Customer")
+                // Create Personal Organization For Customer
+                if (user.UserType.Equals("Customer", StringComparison.OrdinalIgnoreCase))
                 {
                     var organization = new Organization
                     {
-                        Name = $"{user.FirstName} {user.LastName}",
-                        Code = $"user_{user.Id:N}".Substring(0, 50),
+                        Name = $"{user.FirstName} {user.LastName}".Trim(),
+                        Code = $"user_{user.Id:N}",
                         OrganizationType = "Individual",
                         IsActive = true,
                         CreatedAt = DateTime.UtcNow
                     };
+
                     await _unitOfWork.Organizations.AddAsync(organization);
                     await _unitOfWork.SaveChangesAsync();
 
-                    _unitOfWork.UserOrganizations.SetPrimaryOrganizationAsync(user.Id,organization.Id);
+                    await _unitOfWork.UserOrganizations.SetPrimaryOrganizationAsync(
+                        user.Id,
+                        organization.Id
+                    );
 
                     await _unitOfWork.SaveChangesAsync();
                 }
 
-                // Generate tokens
+                // Generate Tokens
                 var roles = await GetUserRolesAsync(user.Id);
                 var permissions = await GetUserPermissionsAsync(user.Id);
+
                 var accessToken = _jwtService.GenerateAccessToken(user, roles, permissions);
                 var refreshToken = await GenerateAndStoreRefreshTokenAsync(user.Id);
 
                 await _unitOfWork.CommitTransactionAsync();
 
-                // Send welcome email
-                await _emailService.SendWelcomeEmailAsync(user.Email, user.FirstName ?? user.Email);
+                await _emailService.SendWelcomeEmailAsync(
+                    user.Email,
+                    user.FirstName ?? user.Email
+                );
 
                 _logger.LogInformation("User registered successfully: {Email}", user.Email);
 
@@ -120,10 +133,16 @@ namespace AutoNext.Platform.AccessControl.API.Managers.Services
                     }
                 };
             }
-            catch
+            catch (Exception ex)
             {
                 await _unitOfWork.RollbackTransactionAsync();
-                throw;
+
+                _logger.LogError(ex, "Registration failed");
+
+                throw new Exception(
+                    $"Registration failed: {ex.InnerException?.Message ?? ex.Message}",
+                    ex
+                );
             }
         }
 

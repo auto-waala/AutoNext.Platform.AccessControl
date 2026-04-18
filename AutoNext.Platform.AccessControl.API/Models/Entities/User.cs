@@ -44,7 +44,7 @@ namespace AutoNext.Platform.AccessControl.API.Models.Entities
         [Column("last_login_at")]
         public DateTime? LastLoginAt { get; set; }
 
-        [Column("metadata")]
+        [Column("metadata", TypeName = "jsonb")]
         public string? Metadata { get; set; }
         public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
         public virtual ICollection<UserOrganization> UserOrganizations { get; set; } = new List<UserOrganization>();
