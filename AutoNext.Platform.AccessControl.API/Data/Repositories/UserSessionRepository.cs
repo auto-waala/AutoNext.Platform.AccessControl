@@ -14,7 +14,7 @@ namespace AutoNext.Platform.AccessControl.API.Data.Repositories
         {
             return await _dbSet
                 .Include(us => us.User)
-                .FirstOrDefaultAsync(us => us.AccessToken == accessTokenHash
+                .FirstOrDefaultAsync(us => us.AccessTokenHash == accessTokenHash
                     && us.IsActive
                     && us.ExpiresAt > DateTime.UtcNow);
         }
