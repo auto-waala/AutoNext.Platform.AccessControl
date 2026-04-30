@@ -61,6 +61,8 @@ namespace AutoNext.Platform.AccessControl.API.Data.UnitOfWork
                 {
                     entity.UpdatedAt = DateTime.UtcNow;
                 }
+
+
             }
 
             return await _context.SaveChangesAsync();

@@ -109,10 +109,10 @@ namespace AutoNext.Platform.AccessControl.API.Managers.Services
 
                 await _unitOfWork.CommitTransactionAsync();
 
-                await _emailService.SendWelcomeEmailAsync(
-                    user.Email,
-                    user.FirstName ?? user.Email
-                );
+                //await _emailService.SendWelcomeEmailAsync(
+                //    user.Email,
+                //    user.FirstName ?? user.Email
+                //);
 
                 _logger.LogInformation("User registered successfully: {Email}", user.Email);
 
@@ -289,7 +289,7 @@ namespace AutoNext.Platform.AccessControl.API.Managers.Services
             var session = new UserSession
             {
                 UserId = userId,
-                AccessToken = HashToken(accessToken),
+                AccessTokenHash = HashToken(accessToken),
                 ExpiresAt = DateTime.UtcNow.AddMinutes(15),
                 CreatedAt = DateTime.UtcNow
             };

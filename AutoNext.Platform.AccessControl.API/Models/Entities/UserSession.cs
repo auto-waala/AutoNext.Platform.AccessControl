@@ -9,9 +9,9 @@ namespace AutoNext.Platform.AccessControl.API.Models.Entities
         [Column("user_id")]
         public Guid UserId { get; set; }
 
-        [Column("access_token")]
+        [Column("access_token_hash")]
         [MaxLength(500)]
-        public string? AccessToken { get; set; }
+        public string? AccessTokenHash { get; set; }
 
         [Column("ip_address")]
         [MaxLength(45)]
