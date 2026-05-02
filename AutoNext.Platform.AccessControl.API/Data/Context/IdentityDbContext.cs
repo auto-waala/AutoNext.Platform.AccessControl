@@ -20,6 +20,7 @@ namespace AutoNext.Platform.AccessControl.API.Data.Context
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
         public DbSet<OtpVerification> OtpVerifications => Set<OtpVerification>();
         public DbSet<UserSession> UserSessions => Set<UserSession>();
+        public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

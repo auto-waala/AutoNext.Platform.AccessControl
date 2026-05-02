@@ -9,5 +9,6 @@ namespace AutoNext.Platform.AccessControl.API.Data.Repositories
         Task InvalidateUserSessionsAsync(Guid userId);
         Task InvalidateSessionAsync(Guid sessionId);
         Task CleanupExpiredSessionsAsync();
+
     }
 }

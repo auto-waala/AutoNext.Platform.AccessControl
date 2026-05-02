@@ -305,24 +305,166 @@ namespace AutoNext.Platform.AccessControl.API.Managers.Services
             return Convert.ToBase64String(hash);
         }
 
-        public Task<bool> LogoutAsync(Guid userId, string refreshToken)
+        public async Task<bool> LogoutAsync(Guid userId, string refreshToken)
         {
-            throw new NotImplementedException();
+            var tokenHash = HashToken(refreshToken);
+
+            var existingToken = await _unitOfWork.RefreshTokens.GetByTokenHashAsync(tokenHash);
+
+            if (existingToken == null || existingToken.UserId != userId)
+                return false;
+
+            await _unitOfWork.BeginTransactionAsync();
+
+            try
+            {
+                existingToken.IsRevoked = true;
+                existingToken.RevokedAt = DateTime.UtcNow;
+
+                _unitOfWork.RefreshTokens.Update(existingToken);
+
+                // Optional: Remove all active sessions
+                await _unitOfWork.UserSessions.InvalidateUserSessionsAsync(userId);
+
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
+
+                return true;
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+                throw;
+            }
         }
 
-        public Task<bool> ChangePasswordAsync(Guid userId, ChangePasswordRequest request)
+        public async Task<bool> ChangePasswordAsync(Guid userId, ChangePasswordRequest request)
         {
-            throw new NotImplementedException();
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+
+            if (user == null)
+                return false;
+
+            if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
+                throw new InvalidOperationException("Invalid current password");
+
+            await _unitOfWork.BeginTransactionAsync();
+
+            try
+            {
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+                user.UpdatedAt = DateTime.UtcNow;
+
+                _unitOfWork.Users.Update(user);
+
+                // Revoke all sessions (force re-login)
+                await _unitOfWork.UserSessions.InvalidateUserSessionsAsync(userId);
+
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
+
+                return true;
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+                throw;
+            }
         }
 
-        public Task<bool> ForgotPasswordAsync(ForgotPasswordRequest request)
+        public async Task<ForgotPasswordResponse> ForgotPasswordAsync(ForgotPasswordRequest request)
         {
-            throw new NotImplementedException();
+            var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
+
+            // Always same response (security)
+            if (user == null)
+            {
+                return new ForgotPasswordResponse
+                {
+                    IsValid = false,
+                    ResetPasswordToken = string.Empty
+                };
+            }
+
+            await _unitOfWork.BeginTransactionAsync();
+
+            try
+            {
+                // 🔥 Invalidate old tokens (important)
+                await _unitOfWork.PasswordResetTokens.InvalidateUserTokensAsync(user.Id);
+
+                var resetToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+                var tokenHash = HashToken(resetToken);
+
+                var resetEntity = new PasswordResetToken
+                {
+                    UserId = user.Id,
+                    TokenHash = tokenHash,
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(15),
+                    CreatedAt = DateTime.UtcNow,
+                    IsUsed = false
+                };
+
+                await _unitOfWork.PasswordResetTokens.AddAsync(resetEntity);
+                await _unitOfWork.SaveChangesAsync();
+
+                await _unitOfWork.CommitTransactionAsync();
+
+                return new ForgotPasswordResponse
+                {
+                    IsValid = true,
+                    ResetPasswordToken = resetToken
+                };
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+                throw;
+            }
         }
 
-        public Task<bool> ResetPasswordAsync(ResetPasswordRequest request)
+        public async Task<bool> ResetPasswordAsync(ResetPasswordRequest request)
         {
-            throw new NotImplementedException();
+            var tokenHash = HashToken(request.Token);
+
+            // 🔥 Use repository validation method
+            var token = await _unitOfWork.PasswordResetTokens
+                .GetValidTokenAsync(tokenHash);
+
+            if (token == null)
+                return false;
+
+            await _unitOfWork.BeginTransactionAsync();
+
+            try
+            {
+                var user = await _unitOfWork.Users.GetByIdAsync(token.UserId);
+
+                if (user == null)
+                    return false;
+
+                // Update password
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+                user.UpdatedAt = DateTime.UtcNow;
+
+                // 🔥 Mark token as used via repository
+                await _unitOfWork.PasswordResetTokens.MarkAsUsedAsync(token.Id);
+
+                // 🔥 Invalidate all sessions
+                await _unitOfWork.UserSessions.InvalidateUserSessionsAsync(user.Id);
+
+                _unitOfWork.Users.Update(user);
+
+                await _unitOfWork.SaveChangesAsync();
+                await _unitOfWork.CommitTransactionAsync();
+
+                return true;
+            }
+            catch
+            {
+                await _unitOfWork.RollbackTransactionAsync();
+                throw;
+            }
         }
 
         public Task<AuthResponse?> GoogleLoginAsync(GoogleLoginRequest request)

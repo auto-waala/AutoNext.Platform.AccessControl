@@ -21,7 +21,7 @@ namespace AutoNext.Platform.AccessControl.API.Data.UnitOfWork
         private IUserOrganizationRepository? _userOrganizationRepository;
         private IOtpVerificationRepository? _otpVerificationRepository;
         private IUserSessionRepository? _userSessionRepository;
-
+        private IPasswordResetTokenRepository? _passwordResetTokenRepository;
         public UnitOfWork(IdentityDbContext context)
         {
             _context = context;
@@ -47,7 +47,10 @@ namespace AutoNext.Platform.AccessControl.API.Data.UnitOfWork
 
         public IUserSessionRepository UserSessions => _userSessionRepository ??= new UserSessionRepository(_context);
 
+        public IPasswordResetTokenRepository PasswordResetTokens=> _passwordResetTokenRepository??= new PasswordResetTokenRepository(_context);
+
         public bool HasActiveTransaction => _currentTransaction != null;
+
 
         public async Task<int> SaveChangesAsync()
         {

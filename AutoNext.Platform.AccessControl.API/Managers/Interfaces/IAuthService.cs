@@ -9,7 +9,7 @@ namespace AutoNext.Platform.AccessControl.API.Managers.Interfaces
         Task<AuthResponse?> RefreshTokenAsync(RefreshTokenRequest request);
         Task<bool> LogoutAsync(Guid userId, string refreshToken);
         Task<bool> ChangePasswordAsync(Guid userId, ChangePasswordRequest request);
-        Task<bool> ForgotPasswordAsync(ForgotPasswordRequest request);
+        Task<ForgotPasswordResponse> ForgotPasswordAsync(ForgotPasswordRequest request);
         Task<bool> ResetPasswordAsync(ResetPasswordRequest request);
         Task<AuthResponse?> GoogleLoginAsync(GoogleLoginRequest request);
         Task<bool> SendVerificationOtpAsync(string email, string purpose);

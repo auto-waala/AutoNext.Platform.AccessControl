@@ -132,8 +132,11 @@ namespace AutoNext.Platform.AccessControl.API.Controllers.v1
         [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
         {
-            await _authService.ForgotPasswordAsync(request);
-            return Ok(ApiResponse<object>.Ok(null, "If your email is registered, you will receive a reset OTP"));
+            var response = await _authService.ForgotPasswordAsync(request);
+            if(response.IsValid == false)
+                return Ok(ApiResponse<object>.Ok(null, "unable to send link"));
+
+            return Ok(ApiResponse<ForgotPasswordResponse>.Ok(response, "link genarated and click on it for redirection to reset password"));
         }
 
         [HttpPost("reset-password")]
@@ -147,7 +150,7 @@ namespace AutoNext.Platform.AccessControl.API.Controllers.v1
                 if (!result)
                     return BadRequest(ApiResponse<object>.Error("Failed to reset password", 400));
 
-                return Ok(ApiResponse<object>.Ok(null, "Password reset successfully"));
+                return Ok(ApiResponse<object>.Ok(true, "Password reset successfully"));
             }
             catch (InvalidOperationException ex)
             {
