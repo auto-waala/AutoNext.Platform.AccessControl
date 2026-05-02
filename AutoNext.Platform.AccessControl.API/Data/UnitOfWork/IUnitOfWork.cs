@@ -14,7 +14,7 @@ namespace AutoNext.Platform.AccessControl.API.Data.UnitOfWork
         IUserOrganizationRepository UserOrganizations { get; }
         IOtpVerificationRepository OtpVerifications { get; }
         IUserSessionRepository UserSessions { get; }
-
+        IPasswordResetTokenRepository PasswordResetTokens { get; }
         Task<int> SaveChangesAsync();
         Task BeginTransactionAsync();
         Task CommitTransactionAsync();

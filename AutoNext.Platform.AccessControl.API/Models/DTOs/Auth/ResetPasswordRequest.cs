@@ -7,8 +7,10 @@ namespace AutoNext.Platform.AccessControl.API.Models.DTOs
         [Required]
         public string Email { get; set; } = string.Empty;
 
-        [Required]
         public string OtpCode { get; set; } = string.Empty;
+
+        [Required]
+        public string Token { get; set; } = string.Empty;
 
         [Required]
         [MinLength(6)]

@@ -8,5 +8,11 @@
         public UserInfoDto User { get; set; } = new UserInfoDto();
     }
 
-   
+
+    public class ForgotPasswordResponse
+    {
+        public bool? IsValid { get; set; } = false;
+        public string ResetPasswordToken { get; set; } = string.Empty;
+    }
+
 }
