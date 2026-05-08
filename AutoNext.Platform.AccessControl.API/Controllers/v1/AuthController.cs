@@ -1,5 +1,4 @@
-﻿
-using Asp.Versioning;
+﻿using Asp.Versioning;
 using AutoNext.Platform.AccessControl.API.Managers.Interfaces;
 using AutoNext.Platform.AccessControl.API.Models.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -34,214 +33,231 @@ namespace AutoNext.Platform.AccessControl.API.Controllers.v1
         }
 
         [HttpPost("register")]
-        [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
+            _logger.LogInformation("Register attempt for {Email}", request.Email);
+
             if (!ModelState.IsValid)
+            {
+                _logger.LogWarning("Invalid register request for {Email}", request.Email);
                 return BadRequest(ApiResponse<object>.Error("Invalid request", 400,
                     ModelState.Values.SelectMany(v => v.Errors.Select(e => e.ErrorMessage)).ToList()));
+            }
 
             try
             {
                 var result = await _authService.RegisterAsync(request);
+                _logger.LogInformation("User registered successfully: {Email}", request.Email);
                 return Ok(ApiResponse<AuthResponse>.Ok(result, "Registration successful"));
             }
             catch (InvalidOperationException ex)
             {
+                _logger.LogWarning(ex, "Registration failed for {Email}", request.Email);
                 return BadRequest(ApiResponse<object>.Error(ex.Message, 400));
             }
         }
 
         [HttpPost("login")]
-        [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
+            _logger.LogInformation("Login attempt for {Email}", request.Email);
+
             var result = await _authService.LoginAsync(request);
             if (result == null)
+            {
+                _logger.LogWarning("Login failed for {Email}", request.Email);
                 return Unauthorized(ApiResponse<object>.Unauthorized("Invalid email or password"));
+            }
 
             var userId = result.User.Id;
             var is2FAEnabled = await _twoFactorService.IsTwoFactorEnabledAsync(userId);
 
             if (is2FAEnabled)
             {
+                _logger.LogInformation("2FA required for user {UserId}", userId);
                 return Ok(ApiResponse<object>.Ok(new
                 {
                     requiresTwoFactor = true,
-                    userId = userId,
-                    message = "Two-factor authentication required"
+                    userId = userId
                 }));
             }
 
+            _logger.LogInformation("Login successful for {UserId}", userId);
             return Ok(ApiResponse<AuthResponse>.Ok(result, "Login successful"));
         }
 
         [HttpPost("refresh")]
-        [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> Refresh([FromBody] RefreshTokenRequest request)
         {
+            _logger.LogInformation("Token refresh attempt");
+
             var result = await _authService.RefreshTokenAsync(request);
             if (result == null)
+            {
+                _logger.LogWarning("Invalid refresh token");
                 return Unauthorized(ApiResponse<object>.Unauthorized("Invalid or expired refresh token"));
+            }
 
+            _logger.LogInformation("Token refreshed successfully");
             return Ok(ApiResponse<AuthResponse>.Ok(result, "Token refreshed successfully"));
         }
 
         [Authorize]
         [HttpPost("logout")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
         public async Task<IActionResult> Logout([FromBody] LogoutRequest? request = null)
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            _logger.LogInformation("Logout attempt for {UserId}", userId);
+
             if (userId != null)
-            {
                 await _authService.LogoutAsync(Guid.Parse(userId), request?.RefreshToken);
-            }
 
             return Ok(ApiResponse<object>.Ok(null, "Logout successful"));
         }
 
         [Authorize]
         [HttpPost("change-password")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
             if (userId == null)
+            {
+                _logger.LogWarning("Unauthorized password change attempt");
                 return Unauthorized(ApiResponse<object>.Unauthorized());
+            }
 
             try
             {
-                var result = await _authService.ChangePasswordAsync(Guid.Parse(userId), request);
-                if (!result)
-                    return BadRequest(ApiResponse<object>.Error("Failed to change password", 400));
+                _logger.LogInformation("Password change attempt for {UserId}", userId);
 
+                var result = await _authService.ChangePasswordAsync(Guid.Parse(userId), request);
+
+                if (!result)
+                {
+                    _logger.LogWarning("Password change failed for {UserId}", userId);
+                    return BadRequest(ApiResponse<object>.Error("Failed to change password", 400));
+                }
+
+                _logger.LogInformation("Password changed successfully for {UserId}", userId);
                 return Ok(ApiResponse<object>.Ok(null, "Password changed successfully"));
             }
             catch (InvalidOperationException ex)
             {
+                _logger.LogWarning(ex, "Password change error for {UserId}", userId);
                 return BadRequest(ApiResponse<object>.Error(ex.Message, 400));
             }
         }
 
         [HttpPost("forgot-password")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
         {
-            var response = await _authService.ForgotPasswordAsync(request);
-            if(response.IsValid == false)
-                return Ok(ApiResponse<object>.Ok(null, "unable to send link"));
+            _logger.LogInformation("Forgot password request for {Email}", request.Email);
 
-            return Ok(ApiResponse<ForgotPasswordResponse>.Ok(response, "link genarated and click on it for redirection to reset password"));
+            var response = await _authService.ForgotPasswordAsync(request);
+
+            if (response == null)
+            {
+                _logger.LogWarning("Failed to generate reset link for {Email}", request.Email);
+                return Ok(ApiResponse<object>.Ok(null, "Unable to send link"));
+            }
+
+            _logger.LogInformation("Reset link generated for {Email}", request.Email);
+            return Ok(ApiResponse<ForgotPasswordResponse>.Ok(response, "Reset link sent"));
         }
 
         [HttpPost("reset-password")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
         {
+            _logger.LogInformation("Reset password attempt");
+
             try
             {
                 var result = await _authService.ResetPasswordAsync(request);
-                if (!result)
-                    return BadRequest(ApiResponse<object>.Error("Failed to reset password", 400));
 
+                if (!result)
+                {
+                    _logger.LogWarning("Password reset failed");
+                    return BadRequest(ApiResponse<object>.Error("Failed to reset password", 400));
+                }
+
+                _logger.LogInformation("Password reset successful");
                 return Ok(ApiResponse<object>.Ok(true, "Password reset successfully"));
             }
             catch (InvalidOperationException ex)
             {
+                _logger.LogWarning(ex, "Reset password error");
                 return BadRequest(ApiResponse<object>.Error(ex.Message, 400));
             }
         }
 
         [HttpPost("google")]
-        [ProducesResponseType(typeof(ApiResponse<AuthResponse>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginRequest request)
         {
+            _logger.LogInformation("Google login attempt");
+
             try
             {
                 var googleUser = await _googleAuthService.ValidateGoogleTokenAsync(request.IdToken);
+
                 if (googleUser == null)
+                {
+                    _logger.LogWarning("Invalid Google token");
                     return Unauthorized(ApiResponse<object>.Unauthorized("Invalid Google token"));
+                }
 
                 var result = await _authService.GoogleLoginAsync(request);
 
                 if (result == null)
+                {
+                    _logger.LogWarning("Google login failed");
                     return Unauthorized(ApiResponse<object>.Unauthorized("Google authentication failed"));
+                }
 
+                _logger.LogInformation("Google login successful for {Email}", googleUser.Email);
                 return Ok(ApiResponse<AuthResponse>.Ok(result, "Google login successful"));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error during Google login");
-                return StatusCode(500, ApiResponse<object>.Error("An error occurred during Google login", 500));
+                return StatusCode(500, ApiResponse<object>.Error("Internal server error", 500));
             }
         }
 
-        [HttpGet("google/url")]
-        [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
-        public IActionResult GetGoogleLoginUrl([FromQuery] string redirectUri)
-        {
-            var url = _googleAuthService.GetGoogleLoginUrl(redirectUri);
-            return Ok(ApiResponse<string>.Ok(url, "Google login URL generated"));
-        }
-
         [HttpPost("send-verification-otp")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
         public async Task<IActionResult> SendVerificationOtp([FromBody] SendVerificationOtpRequest request)
         {
+            _logger.LogInformation("Sending OTP to {Email} for {Purpose}", request.Email, request.Purpose);
+
             await _authService.SendVerificationOtpAsync(request.Email, request.Purpose);
+
             return Ok(ApiResponse<object>.Ok(null, "OTP sent successfully"));
         }
 
         [HttpPost("verify-otp")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpRequest request)
         {
+            _logger.LogInformation("OTP verification attempt for {Email}", request.Email);
+
             try
             {
                 var result = await _authService.VerifyOtpAsync(request);
-                if (!result)
-                    return BadRequest(ApiResponse<object>.Error("OTP verification failed", 400));
 
+                if (!result)
+                {
+                    _logger.LogWarning("OTP verification failed for {Email}", request.Email);
+                    return BadRequest(ApiResponse<object>.Error("OTP verification failed", 400));
+                }
+
+                _logger.LogInformation("OTP verified successfully for {Email}", request.Email);
                 return Ok(ApiResponse<object>.Ok(null, "OTP verified successfully"));
             }
             catch (InvalidOperationException ex)
             {
+                _logger.LogWarning(ex, "OTP verification error for {Email}", request.Email);
                 return BadRequest(ApiResponse<object>.Error(ex.Message, 400));
             }
-        }
-
-        [Authorize]
-        [HttpPost("2fa/disable")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> DisableTwoFactor()
-        {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (userId == null)
-                return Unauthorized(ApiResponse<object>.Unauthorized());
-
-            await _twoFactorService.DisableTwoFactorAsync(Guid.Parse(userId));
-            return Ok(ApiResponse<object>.Ok(null, "2FA disabled successfully"));
-        }
-
-        [Authorize]
-        [HttpGet("2fa/status")]
-        [ProducesResponseType(typeof(ApiResponse<bool>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetTwoFactorStatus()
-        {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (userId == null)
-                return Unauthorized(ApiResponse<object>.Unauthorized());
-
-            var isEnabled = await _twoFactorService.IsTwoFactorEnabledAsync(Guid.Parse(userId));
-            return Ok(ApiResponse<bool>.Ok(isEnabled, "2FA status retrieved"));
         }
     }
 }

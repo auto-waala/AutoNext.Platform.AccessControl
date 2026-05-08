@@ -1,7 +1,6 @@
 ﻿using Asp.Versioning;
 using AutoNext.Platform.AccessControl.API.Managers.Interfaces;
 using AutoNext.Platform.AccessControl.API.Models.DTOs;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AutoNext.Platform.AccessControl.API.Controllers.v1
@@ -21,124 +20,109 @@ namespace AutoNext.Platform.AccessControl.API.Controllers.v1
         }
 
         [HttpGet]
-        [ProducesResponseType(typeof(ApiResponse<IEnumerable<RoleResponseDto>>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAll()
         {
+            _logger.LogInformation("Fetching all roles");
+
             var roles = await _roleService.GetAllRolesAsync();
-            return Ok(ApiResponse<IEnumerable<RoleResponseDto>>.Ok(roles, "Roles retrieved successfully"));
+
+            _logger.LogInformation("Retrieved {Count} roles", roles.Count());
+
+            return Ok(ApiResponse<IEnumerable<RoleResponseDto>>.Ok(roles));
         }
 
         [HttpGet("active")]
-        [ProducesResponseType(typeof(ApiResponse<IEnumerable<RoleResponseDto>>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetActive()
         {
+            _logger.LogInformation("Fetching active roles");
+
             var roles = await _roleService.GetActiveRolesAsync();
-            return Ok(ApiResponse<IEnumerable<RoleResponseDto>>.Ok(roles, "Active roles retrieved successfully"));
+
+            return Ok(ApiResponse<IEnumerable<RoleResponseDto>>.Ok(roles));
         }
 
         [HttpGet("{roleId:Guid}")]
-        [ProducesResponseType(typeof(ApiResponse<RoleResponseDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetById(Guid roleId)
         {
+            _logger.LogInformation("Fetching role: {RoleId}", roleId);
+
             var role = await _roleService.GetRoleByIdAsync(roleId);
+
             if (role == null)
-                return NotFound(ApiResponse<object>.NotFound($"Role with ID {roleId} not found"));
+            {
+                _logger.LogWarning("Role not found: {RoleId}", roleId);
+                return NotFound(ApiResponse<object>.NotFound($"Role {roleId} not found"));
+            }
 
-            return Ok(ApiResponse<RoleResponseDto>.Ok(role, "Role retrieved successfully"));
+            return Ok(ApiResponse<RoleResponseDto>.Ok(role));
         }
-
-        [HttpGet("code/{code}")]
-        [ProducesResponseType(typeof(ApiResponse<RoleResponseDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> GetByCode(string code)
-        {
-            var role = await _roleService.GetRoleByCodeAsync(code);
-            if (role == null)
-                return NotFound(ApiResponse<object>.NotFound($"Role with code {code} not found"));
-
-            return Ok(ApiResponse<RoleResponseDto>.Ok(role, "Role retrieved successfully"));
-        }
-
 
         [HttpPost]
-        [ProducesResponseType(typeof(ApiResponse<RoleResponseDto>), StatusCodes.Status201Created)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> Create([FromBody] RoleCreateDto createDto)
+        public async Task<IActionResult> Create([FromBody] RoleCreateDto dto)
         {
+            _logger.LogInformation("Creating role: {Code}", dto.Code);
+
             if (!ModelState.IsValid)
-                return BadRequest(ApiResponse<object>.Error("Invalid request", 400));
+            {
+                _logger.LogWarning("Invalid role create request");
+                return BadRequest(ApiResponse<object>.Error("Invalid request"));
+            }
 
             try
             {
-                var role = await _roleService.CreateRoleAsync(createDto);
-                return CreatedAtAction(nameof(GetById), new { roleId = role.Id },
-                    ApiResponse<RoleResponseDto>.Ok(role, "Role created successfully"));
+                var role = await _roleService.CreateRoleAsync(dto);
+
+                _logger.LogInformation("Role created: {RoleId}", role.Id);
+
+                return CreatedAtAction(nameof(GetById),
+                    new { roleId = role.Id },
+                    ApiResponse<RoleResponseDto>.Ok(role));
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex)
             {
-                return BadRequest(ApiResponse<object>.Error(ex.Message, 400));
+                _logger.LogWarning(ex, "Error creating role");
+                return BadRequest(ApiResponse<object>.Error(ex.Message));
             }
         }
 
         [HttpPut("{roleId:Guid}")]
-        [ProducesResponseType(typeof(ApiResponse<RoleResponseDto>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> Update(Guid roleId, [FromBody] RoleUpdateDto updateDto)
+        public async Task<IActionResult> Update(Guid roleId, [FromBody] RoleUpdateDto dto)
         {
+            _logger.LogInformation("Updating role: {RoleId}", roleId);
+
             try
             {
-                var role = await _roleService.UpdateRoleAsync(roleId, updateDto);
+                var role = await _roleService.UpdateRoleAsync(roleId, dto);
+
                 if (role == null)
-                    return NotFound(ApiResponse<object>.NotFound($"Role with ID {roleId} not found"));
+                {
+                    _logger.LogWarning("Role not found: {RoleId}", roleId);
+                    return NotFound(ApiResponse<object>.NotFound("Role not found"));
+                }
 
-                return Ok(ApiResponse<RoleResponseDto>.Ok(role, "Role updated successfully"));
+                return Ok(ApiResponse<RoleResponseDto>.Ok(role));
             }
-            catch (InvalidOperationException ex)
+            catch (Exception ex)
             {
-                return BadRequest(ApiResponse<object>.Error(ex.Message, 400));
+                _logger.LogWarning(ex, "Error updating role: {RoleId}", roleId);
+                return BadRequest(ApiResponse<object>.Error(ex.Message));
             }
-        }
-
-        [HttpPatch("{roleId:Guid}/toggle/{isActive}")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
-        public async Task<IActionResult> ToggleStatus(Guid roleId, bool isActive)
-        {
-            var result = await _roleService.ToggleRoleStatusAsync(roleId, isActive);
-            if (!result)
-                return NotFound(ApiResponse<object>.NotFound($"Role with ID {roleId} not found"));
-
-            return Ok(ApiResponse<object>.Ok(null, $"Role status changed to {(isActive ? "active" : "inactive")}"));
-        }
-
-        [HttpPost("{roleId:Guid}/permissions")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> AssignPermissions(Guid roleId, [FromBody] List<Guid> permissionIds)
-        {
-            await _roleService.AssignPermissionsAsync(roleId, permissionIds);
-            return Ok(ApiResponse<object>.Ok(null, "Permissions assigned successfully"));
         }
 
         [HttpDelete("{roleId:Guid}")]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status200OK)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status404NotFound)]
-        [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> Delete(Guid roleId)
         {
-            try
-            {
-                var deleted = await _roleService.DeleteRoleAsync(roleId);
-                if (!deleted)
-                    return NotFound(ApiResponse<object>.NotFound($"Role with ID {roleId} not found"));
+            _logger.LogInformation("Deleting role: {RoleId}", roleId);
 
-                return Ok(ApiResponse<object>.Ok(null, "Role deleted successfully"));
-            }
-            catch (InvalidOperationException ex)
+            var deleted = await _roleService.DeleteRoleAsync(roleId);
+
+            if (!deleted)
             {
-                return BadRequest(ApiResponse<object>.Error(ex.Message, 400));
+                _logger.LogWarning("Role not found: {RoleId}", roleId);
+                return NotFound(ApiResponse<object>.NotFound("Role not found"));
             }
+
+            return Ok(ApiResponse<object>.Ok(null, "Deleted successfully"));
         }
     }
 }
